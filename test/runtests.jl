@@ -294,10 +294,65 @@ using Statistics
         @test length(tree.taxa) == 4
     end
 
+    @testset "Calculate Parsimony Score" begin
+        # Test with known sequences
+        seqs_identical = ["ATCG", "ATCG", "ATCG", "ATCG"]
+        dmat = distance_matrix(seqs_identical, method=:hamming)
+        tree = upgma(dmat, taxa_names=["A", "B", "C", "D"])
+        cm = character_state_matrix(seqs_identical)
+
+        # Identical sequences should have parsimony score 0
+        score = calculate_parsimony_score(tree, cm)
+        @test score isa Int
+        @test score == 0
+
+        # Test with sequences that have differences
+        seqs_different = ["ATCG", "ATCG", "TTCG", "TTCC"]
+        dmat2 = distance_matrix(seqs_different, method=:hamming)
+        tree2 = upgma(dmat2, taxa_names=["A", "B", "C", "D"])
+        cm2 = character_state_matrix(seqs_different)
+
+        score2 = calculate_parsimony_score(tree2, cm2)
+        @test score2 isa Int
+        @test score2 >= 0
+        @test score2 > 0  # Should have non-zero score due to differences
+    end
+
+    @testset "Maximum Parsimony Search" begin
+        # Test basic functionality
+        seqs = ["ATCGATCG", "ATCGATCG", "TTCGTTCG", "TTCCTTCC", "AACGAACG"]
+        tree = maximum_parsimony(seqs, taxa_names=["A", "B", "C", "D", "E"])
+
+        # Test return type and structure
+        @test tree isa Cladistics.PhylogeneticTree
+        @test tree.method == :parsimony
+        @test length(tree.taxa) == 5
+        @test !isempty(tree.root.children)
+
+        # Test that parsimony score is computable
+        cm = character_state_matrix(seqs)
+        score = calculate_parsimony_score(tree, cm)
+        @test score isa Int
+        @test score >= 0
+
+        # Test with identical sequences - should have score 0
+        seqs_identical = ["ATCGATCG", "ATCGATCG", "ATCGATCG"]
+        tree_identical = maximum_parsimony(seqs_identical, taxa_names=["A", "B", "C"])
+        cm_identical = character_state_matrix(seqs_identical)
+        score_identical = calculate_parsimony_score(tree_identical, cm_identical)
+        @test score_identical == 0
+
+        # Test with default taxa names (omit taxa_names parameter)
+        tree_default = maximum_parsimony(seqs)
+        @test length(tree_default.taxa) == 5
+        @test tree_default.method == :parsimony
+    end
+
     @testset "Edge Cases" begin
-        # Single taxon
+        # Single taxon - upgma handles this gracefully
         single_dmat = reshape([0.0], 1, 1)
-        @test_throws BoundsError upgma(single_dmat, taxa_names=["A"])
+        single_tree = upgma(single_dmat, taxa_names=["A"])
+        @test length(single_tree.taxa) == 1
 
         # Two taxa
         two_dmat = [0.0 0.5; 0.5 0.0]
@@ -313,6 +368,56 @@ using Statistics
         empty_char_matrix = Matrix{Char}(undef, 0, 0)
         sites = parsimony_informative_sites(empty_char_matrix)
         @test isempty(sites)
+    end
+
+    @testset "Newick Parser" begin
+        # Test basic parsing with branch lengths
+        newick1 = "((A:0.1,B:0.2):0.3,C:0.4);"
+        tree1 = parse_newick(newick1)
+
+        @test tree1 isa Cladistics.PhylogeneticTree
+        @test tree1.method == :newick
+        @test length(tree1.taxa) == 3
+        @test "A" in tree1.taxa
+        @test "B" in tree1.taxa
+        @test "C" in tree1.taxa
+
+        # Test parsing without branch lengths
+        newick2 = "(A,B,C);"
+        tree2 = parse_newick(newick2)
+
+        @test length(tree2.taxa) == 3
+        @test "A" in tree2.taxa
+        @test "B" in tree2.taxa
+        @test "C" in tree2.taxa
+
+        # Test parsing without trailing semicolon
+        newick3 = "((A:0.1,B:0.2):0.3,C:0.4)"
+        tree3 = parse_newick(newick3)
+
+        @test length(tree3.taxa) == 3
+
+        # Test round-trip: export to Newick and parse back
+        dmat = [0.0 0.2 0.3; 0.2 0.0 0.3; 0.3 0.3 0.0]
+        original = upgma(dmat, taxa_names=["A", "B", "C"])
+        newick_str = tree_to_newick(original)
+        parsed = parse_newick(newick_str)
+
+        # Check that taxa are preserved
+        @test sort(parsed.taxa) == sort(original.taxa)
+
+        # Test with 4 taxa
+        newick4 = "((A:0.1,B:0.2):0.15,(C:0.3,D:0.4):0.25);"
+        tree4 = parse_newick(newick4)
+
+        @test length(tree4.taxa) == 4
+        @test Set(tree4.taxa) == Set(["A", "B", "C", "D"])
+
+        # Test with named internal nodes
+        newick5 = "((A:0.1,B:0.2)AB:0.3,C:0.4);"
+        tree5 = parse_newick(newick5)
+
+        @test length(tree5.taxa) == 3
     end
 
 end

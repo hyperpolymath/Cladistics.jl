@@ -57,7 +57,7 @@ using Graphs
 export distance_matrix, upgma, neighbor_joining, maximum_parsimony,
        bootstrap_support, tree_distance, identify_clades, character_state_matrix,
        PhylogeneticTree, TreeNode, calculate_parsimony_score, root_tree,
-       tree_to_newick, parsimony_informative_sites
+       tree_to_newick, parse_newick, parsimony_informative_sites
 
 # Data structures
 
@@ -449,6 +449,138 @@ end
 # Maximum Parsimony
 
 """
+    maximum_parsimony(sequences::Vector{String}; taxa_names=nothing) -> PhylogeneticTree
+
+Construct a phylogenetic tree using maximum parsimony criterion.
+
+Uses stepwise addition heuristic to find a parsimonious tree. Starts with 3 taxa
+and iteratively adds remaining taxa at the position that minimizes parsimony score.
+
+# Arguments
+- `sequences`: Vector of aligned sequences (all same length)
+- `taxa_names`: Optional vector of taxon names (defaults to "Taxon1", "Taxon2", ...)
+
+# Returns
+A `PhylogeneticTree` with `method = :parsimony`
+
+# Examples
+```julia
+seqs = ["ATCG", "ATCG", "TTCG", "TTCC"]
+tree = maximum_parsimony(seqs, taxa_names=["A", "B", "C", "D"])
+```
+"""
+function maximum_parsimony(sequences::Vector{String}; taxa_names=nothing)
+    n = length(sequences)
+    n < 3 && error("Need at least 3 sequences for parsimony analysis")
+
+    # Generate taxa names if not provided
+    if taxa_names === nothing
+        taxa_names = ["Taxon$i" for i in 1:n]
+    end
+
+    # Convert sequences to character matrix
+    char_matrix = character_state_matrix(sequences)
+
+    # Start with first 3 taxa (only one unrooted topology)
+    # Create a simple star tree with 3 leaves
+    root = TreeNode("Internal1")
+    root.parent = nothing
+    leaf1 = TreeNode(taxa_names[1])
+    leaf1.parent = root
+    leaf1.branch_length = 0.1
+    leaf2 = TreeNode(taxa_names[2])
+    leaf2.parent = root
+    leaf2.branch_length = 0.1
+    leaf3 = TreeNode(taxa_names[3])
+    leaf3.parent = root
+    leaf3.branch_length = 0.1
+    root.children = [leaf1, leaf2, leaf3]
+
+    current_tree = PhylogeneticTree(root, taxa_names[1:3], :parsimony)
+
+    # Stepwise addition for remaining taxa
+    for i in 4:n
+        taxon_name = taxa_names[i]
+        best_tree = nothing
+        best_score = Inf
+
+        # Try inserting new taxon on every branch
+        branches = collect_branches(current_tree.root)
+
+        for (parent_node, child_node) in branches
+            # Create a copy of the tree
+            tree_copy = deepcopy(current_tree)
+
+            # Find the corresponding nodes in the copy
+            parent_copy = find_node_by_name(tree_copy.root, parent_node.name)
+            child_copy = parent_copy === nothing ? nothing : find_child_by_name(parent_copy, child_node.name)
+
+            if parent_copy !== nothing && child_copy !== nothing
+                # Insert new taxon between parent and child
+                new_internal = TreeNode("Internal$(i-2)")
+                new_internal.parent = parent_copy
+                new_internal.branch_length = child_copy.branch_length / 2.0
+
+                new_leaf = TreeNode(taxon_name)
+                new_leaf.parent = new_internal
+                new_leaf.branch_length = 0.1
+
+                child_copy.parent = new_internal
+                child_copy.branch_length = child_copy.branch_length / 2.0
+
+                new_internal.children = [child_copy, new_leaf]
+
+                # Replace child in parent's children list
+                idx = findfirst(c -> c === child_copy, parent_copy.children)
+                if idx !== nothing
+                    parent_copy.children[idx] = new_internal
+                end
+
+                # Update tree taxa list - create new instance since PhylogeneticTree is immutable
+                tree_copy = PhylogeneticTree(tree_copy.root, vcat(tree_copy.taxa, [taxon_name]), :parsimony)
+
+                # Calculate parsimony score for this configuration
+                cm_extended = char_matrix[1:length(tree_copy.taxa), :]
+                score = calculate_parsimony_score(tree_copy, cm_extended)
+
+                if score < best_score
+                    best_score = score
+                    best_tree = tree_copy
+                end
+            end
+        end
+
+        # Keep the best tree
+        if best_tree !== nothing
+            current_tree = best_tree
+        end
+    end
+
+    return current_tree
+end
+
+# Helper function to collect all parent-child branch pairs
+function collect_branches(node::TreeNode, parent=nothing, branches=[])
+    if parent !== nothing
+        push!(branches, (parent, node))
+    end
+    for child in node.children
+        collect_branches(child, node, branches)
+    end
+    return branches
+end
+
+# Helper function to find a child node by name
+function find_child_by_name(parent::TreeNode, name::String)
+    for child in parent.children
+        if child.name == name
+            return child
+        end
+    end
+    return nothing
+end
+
+"""
     calculate_parsimony_score(tree::PhylogeneticTree, char_matrix::Matrix{Char}) -> Int
 
 Calculate the parsimony score (total number of character state changes) for a tree.
@@ -673,9 +805,83 @@ function root_tree(tree::PhylogeneticTree, outgroup::String)
     outgroup_node = find_node_by_name(tree.root, outgroup)
     outgroup_node === nothing && error("Outgroup '$outgroup' not found in tree")
 
-    # Implementation would reroot the tree structure
-    # Simplified version returns the original tree
-    return tree
+    # Check if outgroup is a leaf
+    !isempty(outgroup_node.children) && error("Outgroup must be a leaf node")
+
+    # Get outgroup's parent
+    old_parent = outgroup_node.parent
+    old_parent === nothing && error("Outgroup has no parent - cannot reroot")
+
+    # Edge case: outgroup is already a direct child of root
+    if old_parent.parent === nothing
+        # Already rooted, just rebalance branch lengths at root
+        # Create a new root with balanced branches
+        new_root = TreeNode("Root")
+        new_root.parent = nothing
+
+        # Split outgroup's branch length
+        half_length = outgroup_node.branch_length / 2.0
+        outgroup_copy = deepcopy(outgroup_node)
+        outgroup_copy.branch_length = half_length
+        outgroup_copy.parent = new_root
+
+        # Find the other child of root (the ingroup)
+        other_children = filter(c -> c !== outgroup_node, old_parent.children)
+        if length(other_children) == 1
+            ingroup_copy = deepcopy(other_children[1])
+            ingroup_copy.parent = new_root
+            ingroup_copy.branch_length += half_length
+            new_root.children = [outgroup_copy, ingroup_copy]
+        else
+            # Multiple children - keep root structure but rebalance
+            ingroup_root = TreeNode("Ingroup")
+            ingroup_root.branch_length = half_length
+            ingroup_root.parent = new_root
+            ingroup_root.children = [deepcopy(c) for c in other_children]
+            for c in ingroup_root.children
+                c.parent = ingroup_root
+            end
+            new_root.children = [outgroup_copy, ingroup_root]
+        end
+
+        return PhylogeneticTree(new_root, tree.taxa, tree.method)
+    end
+
+    # General case: reroot at midpoint of outgroup's branch
+    # Create new root node
+    new_root = TreeNode("Root")
+    new_root.parent = nothing
+
+    # Split the outgroup's branch length
+    half_length = outgroup_node.branch_length / 2.0
+
+    # Create outgroup copy with half branch length
+    outgroup_copy = deepcopy(outgroup_node)
+    outgroup_copy.branch_length = half_length
+    outgroup_copy.parent = new_root
+
+    # Create ingroup side: old parent becomes child of new root
+    # Remove outgroup from old parent's children
+    old_parent_copy = deepcopy(old_parent)
+    old_parent_copy.children = filter(c -> c.name != outgroup, old_parent_copy.children)
+
+    # Fix parent references in the copied subtree
+    function fix_parents(node::TreeNode)
+        for child in node.children
+            child.parent = node
+            fix_parents(child)
+        end
+    end
+    fix_parents(old_parent_copy)
+
+    # Set ingroup branch length (other half of split)
+    old_parent_copy.branch_length = half_length
+    old_parent_copy.parent = new_root
+
+    # Assemble new tree
+    new_root.children = [outgroup_copy, old_parent_copy]
+
+    return PhylogeneticTree(new_root, tree.taxa, tree.method)
 end
 
 function find_node_by_name(node::TreeNode, name::String)
@@ -723,6 +929,189 @@ function _node_to_newick(node::TreeNode)
     end
 
     return subtree
+end
+
+"""
+    parse_newick(newick_str::String) -> PhylogeneticTree
+
+Parse a Newick format string into a `PhylogeneticTree`.
+
+Newick format is a standard way of representing phylogenetic trees as nested parentheses
+with branch lengths. This function supports:
+- Named and unnamed leaf nodes
+- Named and unnamed internal nodes
+- Branch lengths in the format `:0.123`
+- Nested parentheses for subtrees
+- Trailing semicolon (optional)
+
+# Format
+
+The Newick format uses:
+- Parentheses `()` to denote subtrees
+- Commas `,` to separate siblings
+- Colons `:` to specify branch lengths
+- Semicolon `;` to mark the end of the tree (optional)
+
+# Examples
+
+```jldoctest
+julia> using Cladistics
+
+julia> tree = parse_newick("((A:0.1,B:0.2):0.3,C:0.4);");
+
+julia> tree.taxa
+3-element Vector{String}:
+ "A"
+ "B"
+ "C"
+
+julia> tree2 = parse_newick("(A,B,C);");  # No branch lengths
+
+julia> length(tree2.taxa)
+3
+```
+
+# See Also
+- [`tree_to_newick`](@ref): Convert a tree to Newick format
+- [`upgma`](@ref), [`neighbor_joining`](@ref): Tree construction methods
+"""
+function parse_newick(newick_str::String)
+    # Remove trailing semicolon and whitespace
+    s = String(strip(newick_str))
+    if endswith(s, ';')
+        s = s[1:end-1]
+    end
+    s = String(strip(s))
+
+    # Track position in string
+    pos = Ref(1)
+
+    # Parse the tree recursively
+    root, taxa = _parse_newick_node(s, pos, 0)
+
+    return PhylogeneticTree(root, taxa, :newick)
+end
+
+# Helper function to parse a single node or subtree
+function _parse_newick_node(s::String, pos::Ref{Int}, internal_counter::Int)
+    taxa = String[]
+    internal_counter_ref = Ref(internal_counter)
+
+    # Skip whitespace
+    while pos[] <= length(s) && s[pos[]] == ' '
+        pos[] += 1
+    end
+
+    if pos[] > length(s)
+        error("Unexpected end of Newick string")
+    end
+
+    # Check if this is a subtree (starts with '(')
+    if s[pos[]] == '('
+        pos[] += 1  # Skip '('
+
+        # Parse children
+        children = TreeNode[]
+
+        while true
+            # Skip whitespace
+            while pos[] <= length(s) && s[pos[]] == ' '
+                pos[] += 1
+            end
+
+            # Parse child
+            child, child_taxa = _parse_newick_node(s, pos, internal_counter_ref[])
+            push!(children, child)
+            append!(taxa, child_taxa)
+
+            internal_counter_ref[] += 1
+
+            # Skip whitespace
+            while pos[] <= length(s) && s[pos[]] == ' '
+                pos[] += 1
+            end
+
+            # Check for comma (more children) or close paren (done with children)
+            if pos[] <= length(s) && s[pos[]] == ','
+                pos[] += 1  # Skip comma
+            elseif pos[] <= length(s) && s[pos[]] == ')'
+                pos[] += 1  # Skip ')'
+                break
+            else
+                error("Expected ',' or ')' at position $(pos[])")
+            end
+        end
+
+        # Create internal node
+        node = TreeNode("Internal$(internal_counter_ref[])")
+        node.children = children
+        for child in children
+            child.parent = node
+        end
+
+        # Parse optional name for internal node
+        name_start = pos[]
+        while pos[] <= length(s) && s[pos[]] != ':' && s[pos[]] != ',' && s[pos[]] != ')' && s[pos[]] != ';'
+            pos[] += 1
+        end
+
+        if pos[] > name_start
+            name = String(strip(s[name_start:pos[]-1]))
+            if !isempty(name)
+                node.name = name
+            end
+        end
+
+        # Parse optional branch length
+        if pos[] <= length(s) && s[pos[]] == ':'
+            pos[] += 1  # Skip ':'
+            length_start = pos[]
+
+            while pos[] <= length(s) && (isdigit(s[pos[]]) || s[pos[]] == '.' || s[pos[]] == '-' || s[pos[]] == 'e' || s[pos[]] == 'E')
+                pos[] += 1
+            end
+
+            length_str = s[length_start:pos[]-1]
+            if !isempty(length_str)
+                node.branch_length = parse(Float64, length_str)
+            end
+        end
+
+        return node, taxa
+
+    else
+        # This is a leaf node - parse taxon name
+        name_start = pos[]
+
+        while pos[] <= length(s) && s[pos[]] != ':' && s[pos[]] != ',' && s[pos[]] != ')' && s[pos[]] != ';'
+            pos[] += 1
+        end
+
+        name = String(strip(s[name_start:pos[]-1]))
+        if isempty(name)
+            error("Empty taxon name at position $(name_start)")
+        end
+
+        node = TreeNode(name)
+        push!(taxa, name)
+
+        # Parse optional branch length
+        if pos[] <= length(s) && s[pos[]] == ':'
+            pos[] += 1  # Skip ':'
+            length_start = pos[]
+
+            while pos[] <= length(s) && (isdigit(s[pos[]]) || s[pos[]] == '.' || s[pos[]] == '-' || s[pos[]] == 'e' || s[pos[]] == 'E')
+                pos[] += 1
+            end
+
+            length_str = s[length_start:pos[]-1]
+            if !isempty(length_str)
+                node.branch_length = parse(Float64, length_str)
+            end
+        end
+
+        return node, taxa
+    end
 end
 
 end # module Cladistics

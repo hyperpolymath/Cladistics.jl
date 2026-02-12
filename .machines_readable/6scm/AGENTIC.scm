@@ -1,5 +1,5 @@
 ;; SPDX-License-Identifier: PMPL-1.0-or-later
-;; AGENTIC.scm - AI agent interaction patterns for rsr-template-repo
+;; AGENTIC.scm - AI agent interaction patterns for Cladistics.jl
 
 (define agentic-config
   `((version . "1.0.0")
@@ -12,5 +12,5 @@
        (refactoring . "conservative")
        (testing . "comprehensive")))
     (constraints
-      ((languages . ())
+      ((languages . ("julia"))
        (banned . ("typescript" "go" "python" "makefile"))))))

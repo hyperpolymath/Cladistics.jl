@@ -1,22 +1,66 @@
 // SPDX-License-Identifier: PMPL-1.0-or-later
-= YOUR Template Repo Roadmap
+= Cladistics.jl Roadmap
 
 == Current Status
 
-Initial development phase.
+Active development at v0.2.0. Core distance-based and parsimony-based tree building methods implemented and working.
 
-== Milestones
+== Completed Milestones
 
-=== v0.1.0 - Foundation
-* [ ] Core functionality
-* [ ] Basic documentation
-* [ ] CI/CD pipeline
+=== v0.1.0 - Core Algorithms ✓
+* [x] Distance metrics: Hamming, p-distance, Jukes-Cantor 69, Kimura 2-parameter
+* [x] UPGMA tree construction
+* [x] Neighbor-Joining tree construction
+* [x] Fitch algorithm for parsimony scoring
+* [x] Bootstrap support calculation
+* [x] Clade identification
+* [x] Robinson-Foulds tree distance
+* [x] Newick format export
 
-=== v1.0.0 - Stable Release
-* [ ] Full feature set
-* [ ] Comprehensive tests
-* [ ] Production ready
+=== v0.2.0 - Maximum Parsimony and Tree Rerooting ✓
+* [x] Fix fitch_score return type bug
+* [x] Fix Kimura 2-parameter operator precedence bug
+* [x] Implement tree rerooting with midpoint algorithm
+* [x] Implement maximum parsimony search with stepwise addition heuristic
+* [x] Add comprehensive test coverage
+
+== In Progress
+
+=== v0.3.0 - Newick I/O
+* [ ] Implement Newick parser (read trees from strings)
+* [ ] Round-trip tests (parse → export → parse)
+* [ ] Tree visualization examples
+
+== Planned
+
+=== v1.0.0 - Package Registration
+* [ ] Julia General registry submission
+* [ ] Full API documentation with examples
+* [ ] Performance benchmarks vs. established tools (MEGA, PAUP*)
+* [ ] User guide with real biological datasets
+* [ ] Tree visualization integration (Makie.jl / GraphRecipes.jl)
 
 == Future Directions
 
-_To be determined based on community feedback._
+=== Advanced Methods (v1.x)
+* Maximum likelihood phylogenetic inference
+* Bayesian methods (MCMC sampling)
+* Quartet puzzling algorithms
+* Model selection (AIC, BIC)
+
+=== Performance (v1.x)
+* Parallel tree search algorithms
+* GPU acceleration for distance calculations
+* Memory-efficient algorithms for large datasets (1000+ taxa)
+
+=== Ecosystem Integration (v2.x)
+* Integration with BioSequences.jl for direct sequence input
+* PhyloNetworks.jl compatibility
+* Support for phylogenetic networks (reticulation)
+* Integration with alignment tools (BioAlignments.jl)
+
+=== Specialized Features (v2.x)
+* Molecular clock testing
+* Ancestral state reconstruction
+* Divergence time estimation
+* Trait evolution models
