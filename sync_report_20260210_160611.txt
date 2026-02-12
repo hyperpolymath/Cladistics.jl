@@ -1,0 +1,4 @@
+To github.com:hyperpolymath/Cladistics.jl.git
+   7f86634..4c7a195  HEAD -> main
+branch 'main' set up to track 'origin/main'.
+  Successfully pushed to Cladistics.jl/

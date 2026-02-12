@@ -184,9 +184,11 @@ function kimura_2p_distance(seq1::String, seq2::String)
     P = transitions / len  # Transition frequency
     Q = transversions / len  # Transversion frequency
 
-    (1.0 - 2P - Q) <= 0 || (1.0 - 2Q) <= 0 && return Inf
+    if (1.0 - 2.0 * P - Q) <= 0.0 || (1.0 - 2.0 * Q) <= 0.0
+        return Inf
+    end
 
-    return -0.5 * log((1.0 - 2P - Q) * sqrt(1.0 - 2Q))
+    return -0.5 * log((1.0 - 2.0 * P - Q) * sqrt(1.0 - 2.0 * Q))
 end
 
 # UPGMA algorithm
@@ -464,7 +466,7 @@ function calculate_parsimony_score(tree::PhylogeneticTree, char_matrix::Matrix{C
     total_score = 0
 
     for j in 1:size(char_matrix, 2)
-        score = fitch_score(tree.root, char_matrix[:, j], tree.taxa)
+        (_, score) = fitch_score(tree.root, char_matrix[:, j], tree.taxa)
         total_score += score
     end
 
@@ -473,21 +475,25 @@ end
 
 function fitch_score(node::TreeNode, char_column::Vector{Char}, taxa::Vector{String})
     if isempty(node.children)
-        # Terminal node
+        # Terminal node - return (Set, 0)
         idx = findfirst(==(node.name), taxa)
-        return Set([char_column[idx]])
+        return (Set([char_column[idx]]), 0)
     end
 
-    # Internal node - recursively compute child sets
-    child_sets = [fitch_score(child, char_column, taxa) for child in node.children]
+    # Internal node - recursively compute child results
+    child_results = [fitch_score(child, char_column, taxa) for child in node.children]
+
+    # Extract sets and scores
+    child_sets = [result[1] for result in child_results]
+    child_score_sum = sum(result[2] for result in child_results)
 
     # Intersection of child sets
     intersection = reduce(intersect, child_sets)
 
     if !isempty(intersection)
-        return intersection, 0  # No change needed
+        return (intersection, child_score_sum + 0)  # No change needed
     else
-        return reduce(union, child_sets), 1  # Change required
+        return (reduce(union, child_sets), child_score_sum + 1)  # Change required
     end
 end
 
