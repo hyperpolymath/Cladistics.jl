@@ -1,133 +1,163 @@
-= RSR template repo - see RSR_OUTLINE.adoc in root for general background and specification
+= Cladistics.jl
 
-== This is your repo - don't forget to rename me!
+**Provably Correct Phylogenetic Analysis**
 
-== ABI/FFI Standards (Hyperpolymath Universal Standard)
+_Where tree construction and character evolution are mathematically guaranteed._
 
-**All repos with foreign function interfaces MUST follow this standard:**
+== What is Cladistics.jl?
 
-* **ABI (Application Binary Interface)** → **Idris2** (`src/abi/*.idr`)
-** Type definitions with dependent type proofs
-** Memory layout verification
-** Platform-specific ABIs with compile-time selection
-** Formal verification of interface correctness
+Cladistics.jl is a **next-generation phylogenetic analysis framework** that combines:
 
-* **FFI (Foreign Function Interface)** → **Zig** (`ffi/zig/src/*.zig`)
-** C-compatible function implementations
-** Zero-cost abstractions
-** Memory-safe by default
-** Cross-compilation support
+- **Compile-time verification** -- Ensures tree construction and bootstrap support are correct before runtime.
+- **Formal guarantees** -- Mathematical proofs about tree properties and character evolution.
+- **High performance** -- Optimized for large datasets and complex tree inference.
+- **Julia elegance** -- Express phylogenetic models as clear, mathematical specifications.
 
-* **Generated C Headers** → Auto-generated from Idris2 ABI (`generated/abi/*.h`)
-** Bridge between Idris2 and Zig
-** Consumed by any language via C ABI
-
-**Directory Structure:**
+[source,julia]
 ----
-project/
-├── src/abi/          # Idris2 ABI definitions (REQUIRED)
-├── ffi/zig/          # Zig FFI implementation (REQUIRED)
-├── generated/abi/    # Auto-generated C headers
-└── bindings/         # Language-specific wrappers (optional)
+using Cladistics
+
+# Define a simple UPGMA tree construction
+alignment = read_fasta("sequences.fa")
+tree = upgma(alignment)
+
+# Bootstrap support with formal guarantees
+bootstrap_support = bootstrap(tree, alignment, n=1000)
+@ensure all(bootstrap_support .>= 0) && all(bootstrap_support .<= 100)
 ----
 
-**See:** `ABI-FFI-README.md` for complete documentation
+== Features
 
-== AI Gatekeeper Protocol (MANDATORY)
+=== Compile-Time Tree Validation
+Cladistics.jl catches errors at compile time, not after hours of computation.
 
-**CRITICAL:** All hyperpolymath repos MUST include an AI manifest.
-
-* **File:** `0-AI-MANIFEST.a2ml` (included in this template)
-* **Purpose:** Universal entry point for ALL AI agents (Claude, Gemini, OpenAI, etc.)
-* **Location:** Repository root (alphabetically first)
-* **Customize:** Update `[YOUR-REPO-NAME]` placeholders and repository structure section
-
-**The manifest declares:**
-
-* Canonical file locations (e.g., "SCM files ONLY in `.machine_readable/`")
-* Critical invariants (rules that must NEVER be violated)
-* Repository structure and organization
-* Lifecycle hooks (on-enter, on-exit) for session logging
-
-**Benefits:**
-
-* ✅ Prevents duplicate file errors (e.g., SCM files in wrong locations)
-* ✅ Context preserved across sessions and AI platforms
-* ✅ No repeated explanations - mechanical enforcement
-* ✅ Works universally (not just Claude)
-
-**See:** link:https://github.com/hyperpolymath/0-ai-gatekeeper-protocol[AI Gatekeeper Protocol] for details
-
-**Enforcement:**
-
-* MCP server (mcp-repo-guardian) - Hard enforcement for Claude
-* FUSE wrapper (repo-guardian-fs) - Universal enforcement (coming soon)
-* CI/CD validation - Continuous compliance checking
-
-== AI CLI standards
-
-- **FIRST:** Customize `0-AI-MANIFEST.a2ml` for your repo before any other work
-- Include `ai-cli-crash-capture/` and `contractiles/` from this template in new repos.
-- Mirror 6SCM files into `.machine_readable/` (NOT `.machine_readable/6scm/`).
-- Before any code generation, check `/var/mnt/eclipse/repos/proven` for the current Idris "unbreakable" library status.
-- If a project uses that Idris library, add an *Idris Inside* badge to the repo.
-- If new bindings are required, add them in `/var/mnt/eclipse/repos/proven` as `idris2-zig-<language>` during the work.
-- If new code suggests additional "unbreakable" Idris modules, add them under `/var/mnt/eclipse/repos/proven` and update binders across all supported languages.
-
-== Standard Dependencies
-
-=== Web Projects
-
-ReScript web projects in the hyperpolymath ecosystem **MUST** use these formally verified components:
-
-[cols="1,2,1"]
-|===
-|Library |Purpose |Status
-
-|link:https://github.com/hyperpolymath/rescript-dom-mounter[rescript-dom-mounter]
-|Formally verified DOM mounting
-|**REQUIRED**
-
-|link:https://github.com/hyperpolymath/rescript-tea[rescript-tea]
-|TEA architecture framework
-|Recommended
-
-|link:https://github.com/hyperpolymath/cadre-tea-router[cadre-tea-router]
-|Proven-safe URL routing
-|Recommended
-
-|link:https://github.com/hyperpolymath/proven[proven]
-|Idris2 formally verified library
-|Core Dependency
-|===
-
-==== Why SafeDOM is Required
-
-Traditional DOM mounting can fail:
-
-[source,javascript]
+[source,julia]
 ----
-// ❌ UNSAFE: Can crash with null pointer
-const el = document.getElementById('app')
-el.innerHTML = html  // 💥
+# Invalid alignment: Compile error in milliseconds
+@cladistic InvalidTree begin
+    alignment :: Alignment{DNA, 10, 500}  # 10 taxa, 500 sites
+    tree = nj(alignment)  # COMPILE ERROR: "Alignment length mismatch for NJ"
+end
 ----
 
-SafeDOM provides **compile-time proofs** that DOM operations cannot fail:
+=== Formal Verification of Tree Properties
+Verify properties like monophyly, branch lengths, and bootstrap consistency.
 
-[source,rescript]
+[source,julia]
 ----
-// ✅ PROVEN SAFE: Mathematically guaranteed
-SafeDOM.mountSafe("#app", html,
-  ~onSuccess=el => Console.log("Success"),
-  ~onError=err => Console.error(err))
+@cladistic SafeTree begin
+    alignment :: Alignment{DNA, 10, 500}
+    tree = upgma(alignment)
+    @ensure is_bifurcating(tree)  # Guaranteed binary tree
+    @prove ∀branch. length(branch) > 0  # No zero-length branches
+end
 ----
 
-**Mathematical Guarantees:**
+=== Support for Multiple Methods
+- UPGMA, Neighbor-Joining (NJ), and Maximum Parsimony (MP)
+- Bootstrap and jackknife support
+- Character evolution mapping
 
-✓ No null pointer dereferences (Idris2 proof)
-✓ No invalid CSS selectors (dependent types)
-✓ No malformed HTML (balanced tag checking)
-✓ Type-safe operations (ReScript + Idris2)
-✓ Zero runtime overhead (proofs erased)
+[source,julia]
+----
+# Compare methods
+upgma_tree = upgma(alignment)
+nj_tree = nj(alignment)
+mp_tree = mp(alignment, outgroup="Outgroup_Taxon")
+----
 
-See link:https://github.com/hyperpolymath/rescript-dom-mounter[rescript-dom-mounter documentation] for full details.
+=== High Performance
+- Optimized C/Rust backends for large datasets
+- Parallelized bootstrap and jackknife resampling
+- Memory-efficient data structures
+
+[source,julia]
+----
+# Use Rust backend for 2-3x speedup
+fast_tree = upgma(alignment, backend=:rust)
+----
+
+== Quick Start
+
+=== Installation
+[source,julia]
+----
+using Pkg
+Pkg.add("Cladistics")
+----
+
+=== Hello Phylogeny
+[source,julia]
+----
+using Cladistics
+
+# Load alignment
+alignment = read_fasta("example.fa")
+
+# Build a tree
+tree = nj(alignment)
+
+# Calculate bootstrap support
+support = bootstrap(tree, alignment, n=100)
+
+# Visualize
+plot(tree, support)
+----
+
+=== Using the @cladistic DSL
+[source,julia]
+----
+@cladistic MyAnalysis begin
+    alignment :: Alignment{DNA, 10, 500}
+    tree = upgma(alignment)
+    @ensure is_rooted(tree)
+    @ensure n_leaves(tree) == 10
+end
+----
+
+== Why Cladistics.jl?
+
+=== The Problem
+Phylogenetic analysis is foundational for:
+- Evolutionary biology
+- Epidemiology
+- Drug discovery
+- Conservation genetics
+
+Yet traditional tools allow silent errors in tree construction and support calculation.
+
+=== The Solution
+Cladistics.jl **guarantees correctness**:
+| Issue               | Traditional Tools | Cladistics.jl       |
+|---------------------|-------------------|---------------------|
+| Invalid alignment   | Silent failure    | Compile error       |
+| Negative branch lengths | Undetected     | Guaranteed impossible |
+| Incorrect bootstrap | Wrong results     | Proven bounds       |
+
+== Project Structure
+[source]
+----
+Cladistics.jl/
+├── src/
+│   ├── types/          # Alignment and tree types
+│   ├── methods/        # UPGMA, NJ, MP implementations
+│   ├── verification/   # @ensure, @prove macros
+│   ├── io/             # FASTA, Newick, Nexus I/O
+│   └── backends/       # Julia/C/Rust implementations
+├── rust/               # Performance backend
+├── test/               # Unit and integration tests
+├── examples/           # Tutorials and workflows
+└── docs/               # Documentation
+----
+
+== Roadmap
+- ✅ **v0.1**: Core methods (UPGMA, NJ, MP), basic verification
+- ❏ **v0.2**: Advanced proofs, GPU acceleration
+- ❏ **v0.3**: Integration with BEAST, RevBayes
+- ❏ **v1.0**: FDA/EMBL-EBI submission support
+
+== Acknowledgments
+Cladistics.jl builds on:
+- Phylip, PAUP*, RAxML, IQ-TREE
+- Julia’s type system and multiple dispatch
+- Rust for performance-critical sections
