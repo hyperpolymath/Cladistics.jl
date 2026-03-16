@@ -287,9 +287,9 @@ println("TASK 5 PASS: UUID is valid: $uuid_str")
 
 ---
 
-## TASK 6: Fix SPDX license headers -- replace all AGPL-3.0-or-later with PMPL-1.0-or-later (MEDIUM)
+## TASK 6: Fix SPDX license headers -- replace all PMPL-1.0-or-later with PMPL-1.0-or-later (MEDIUM)
 
-**Files:** All files listed below that still contain `AGPL-3.0-or-later`:
+**Files:** All files listed below that still contain `PMPL-1.0-or-later`:
 - `.machines_readable/6scm/STATE.scm` line 1
 - `.machines_readable/6scm/META.scm` line 1
 - `.machines_readable/6scm/ECOSYSTEM.scm` line 1
@@ -301,15 +301,15 @@ println("TASK 5 PASS: UUID is valid: $uuid_str")
 - `examples/SafeDOMExample.res` line 1
 - `docs/CITATIONS.adoc` line 13
 
-**Problem:** Per CLAUDE.md, the AGPL-3.0-or-later license has been replaced by
+**Problem:** Per CLAUDE.md, the PMPL-1.0-or-later license has been replaced by
 PMPL-1.0-or-later for all hyperpolymath original code. These files still use the old
 license identifier.
 
 **What to do:**
 
-1. In every file listed above, replace `AGPL-3.0-or-later` with `PMPL-1.0-or-later`.
+1. In every file listed above, replace `PMPL-1.0-or-later` with `PMPL-1.0-or-later`.
 2. Do not change anything else in these files.
-3. Verify no other files still contain `AGPL-3.0-or-later` (except `RSR_OUTLINE.adoc`
+3. Verify no other files still contain `PMPL-1.0-or-later` (except `RSR_OUTLINE.adoc`
    which discusses licensing policy historically and should not be changed).
 
 **Verification:**
@@ -319,7 +319,7 @@ for f in readdir(".", join=true)
     isfile(f) || continue
     endswith(f, ".adoc") && basename(f) == "RSR_OUTLINE.adoc" && continue
     content = read(f, String)
-    if occursin("AGPL-3.0-or-later", content)
+    if occursin("PMPL-1.0-or-later", content)
         error("AGPL still found in: $f")
     end
 end
@@ -330,12 +330,12 @@ for (root, dirs, files) in walkdir(".")
         path = joinpath(root, f)
         endswith(path, "RSR_OUTLINE.adoc") && continue
         content = read(path, String)
-        if occursin("AGPL-3.0-or-later", content)
+        if occursin("PMPL-1.0-or-later", content)
             error("AGPL still found in: $path")
         end
     end
 end
-println("TASK 6 PASS: No AGPL-3.0-or-later headers remain (except RSR_OUTLINE.adoc)")
+println("TASK 6 PASS: No PMPL-1.0-or-later headers remain (except RSR_OUTLINE.adoc)")
 ```
 
 ---
@@ -445,7 +445,7 @@ println("TASK 7 PASS: All SCM files customized for Cladistics.jl")
    - Replace year `2025` with `2026`.
    - Replace author in BibTeX `author` field with `{Jewell, Jonathan D.A.}`.
    - Update URL to `https://github.com/hyperpolymath/Cladistics.jl`.
-   - Replace `license = {AGPL-3.0-or-later}` with `license = {PMPL-1.0-or-later}`.
+   - Replace `license = {PMPL-1.0-or-later}` with `license = {PMPL-1.0-or-later}`.
 
 4. In `ROADMAP.adoc`:
    - Replace `YOUR Template Repo Roadmap` with `Cladistics.jl Roadmap`.
