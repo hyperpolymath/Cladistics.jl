@@ -1,5 +1,0 @@
-= Cladistics.jl
-:toc: preamble
-:icons: font
-
-
