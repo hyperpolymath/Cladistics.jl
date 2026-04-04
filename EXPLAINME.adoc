@@ -1,42 +1,158 @@
 // SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 = Cladistics.jl — Show Me The Receipts
 :toc:
+:toclevels: 3
 :icons: font
 
-The README makes claims. This file backs them up.
+The README makes claims. This file backs them up with specific code locations,
+honest caveats, and enough detail for an external reviewer to orient themselves.
 
-[quote, README]
-____
-See the link:README.adoc[README] for details.
-____
+== README Claims — Verified
 
-== Technology Choices
+=== Claim 1: "Multiple distance metrics including Jukes-Cantor correction for multiple substitutions"
 
-[cols="1,2"]
-|===
-| Technology | Learn More
+*True.* `src/Cladistics.jl` exports `distance_matrix/2` with a `method` keyword
+accepting `:hamming`, `:p_distance`, `:jc69` (Jukes-Cantor 1969), and `:k2p`
+(Kimura 2-parameter). The test suite verifies that the JC69 corrected distance
+is strictly greater than p-distance for sequences that differ, confirming the
+saturation correction is operative. Symmetry and zero-diagonal invariants are
+tested for all methods.
 
-| **Zig** | https://ziglang.org
-| **Julia** | https://julialang.org
-| **Idris2 ABI** | https://www.idris-lang.org
-|===
+*Caveat:* The package is at 75% completion (TOPOLOGY.md). Maximum likelihood
+distance methods (e.g., GTR model) and amino acid alphabet support are not yet
+implemented.
+
+=== Claim 2: "Bootstrap support — statistical confidence in tree topology with 1000+ replicates"
+
+*True.* `bootstrap_support/2` takes a sequence matrix and `replicates` count,
+resamples alignment columns with replacement, reconstructs a tree per replicate,
+and returns proportional support values for each bipartition. The default
+`replicates=1000` is confirmed in the docstring and Quick Start.
+
+*Caveat:* Bootstrap resampling is CPU-bound; at 1000 replicates over large
+alignments this is slow. The AcceleratorGate GPU hooks in `backends/abstract.jl`
+exist but are not yet operative for this function.
+
+=== Claim 3: "Neighbor-Joining does not assume a molecular clock"
+
+*True.* `neighbor_joining/1` accepts a raw distance matrix (output of
+`distance_matrix`) and returns a `PhylogeneticTree` with unequal branch lengths
+computed by the NJ algorithm. The UPGMA implementation assumes rate constancy;
+the test suite validates that NJ and UPGMA produce different topologies for the
+same input when rates are heterogeneous.
+
+== How It Works
+
+The package is centred on three data types: `TreeNode` (a mutable struct with
+`name`, `children`, `branch_length`, `support`, and `parent` fields),
+`PhylogeneticTree` (wrapper with a root `TreeNode`), and `DTCode` for
+Dowker-Thistlethwaite representations used in tree comparison.
+
+The analysis pipeline follows:
+
+. Build a distance matrix from raw sequence strings via `distance_matrix`.
+. Construct a tree using `upgma`, `neighbor_joining`, or `maximum_parsimony`.
+. Optionally assess reliability with `bootstrap_support`.
+. Export to Newick format via `tree_to_newick` or parse an existing Newick
+  string with `parse_newick`.
+. Identify well-supported monophyletic groups with `identify_clades`.
+
+`Graphs.jl` provides the underlying adjacency structure. `Clustering.jl` is
+used internally for UPGMA's agglomerative linkage step. `Distances.jl` provides
+validated distance functions as a computational substrate.
+
+== Honest Caveats
+
+* The package is at 75% completion. Bayesian phylogenetics (MrBayes-style MCMC)
+  and maximum-likelihood tree search are in the roadmap but not implemented.
+* `character_state_matrix` and `parsimony_informative_sites` are implemented,
+  but the full Fitch parsimony algorithm for tree scoring is only partially
+  complete.
+* No I/O support for NEXUS or PHYLIP formats; only Newick is supported.
+* The AcceleratorGate GPU extensions (`src/backends/abstract.jl`,
+  weak-deps CUDA/Metal/AMDGPU) are scaffolded but not operative.
 
 == Dogfooded Across The Account
 
-Uses the hyperpolymath ABI/FFI standard (Idris2 + Zig). Same pattern used across
-https://github.com/hyperpolymath/proven[proven],
-https://github.com/hyperpolymath/burble[burble], and
-https://github.com/hyperpolymath/gossamer[gossamer].
+[cols="2,3"]
+|===
+| Where | How Cladistics is relevant
+
+| https://github.com/hyperpolymath/developer-ecosystem[developer-ecosystem]
+  `julia-ecosystem/`
+| Cladistics follows the standard Julia RSR package layout enforced by the
+  Julia ecosystem tooling: Project.toml, test/, benches/, contractiles/.
+
+| https://github.com/hyperpolymath/statistease[statistease]
+| Statistease's distance and clustering primitives are conceptually
+  complementary; Cladistics provides domain-specific biological distance
+  models (JC69, K2P) beyond generic metrics.
+
+| https://github.com/hyperpolymath/Cliodynamics.jl[Cliodynamics.jl]
+| The phylogenetic distance methods in Cladistics can be repurposed for
+  cultural trait evolution analysis, a use case noted in Turchin's
+  cliodynamics programme.
+
+| https://github.com/hyperpolymath/hypatia[hypatia]
+| Hypatia CI scans Cladistics.jl for SPDX compliance and RSR antipatterns
+  on every push.
+|===
 
 == File Map
 
-[cols="1,2"]
+[cols="2,3"]
 |===
-| Path | What's There
+| Path | What is There
 
-| `src/` | Source code
-| `ffi/` | Foreign function interface
-| `test(s)/` | Test suite
+| `src/Cladistics.jl`
+| Entire package implementation. Data types (`TreeNode`, `PhylogeneticTree`,
+  `DTCode`), distance computation (`distance_matrix` with 4 methods),
+  tree-building algorithms (`upgma`, `neighbor_joining`, `maximum_parsimony`),
+  bootstrap analysis, clade identification, Newick I/O, and parsimony scoring.
+
+| `src/backends/abstract.jl`
+| AcceleratorGate coprocessor-dispatch hook (GPU backend stub for bootstrap
+  resampling and distance matrix computation).
+
+| `src/abi/`
+| Idris2 ABI definitions directory — currently scaffolded, not yet populated.
+
+| `test/runtests.jl`
+| Tests covering: Hamming/p-distance/JC69/K2P distance matrices (symmetry,
+  zero diagonal, value correctness); UPGMA and NJ tree construction; parsimony
+  score computation; bootstrap support; Newick round-trip; clade identification
+  with confidence threshold.
+
+| `test/e2e_test.jl`
+| End-to-end test: distance matrix → NJ tree → bootstrap → clade extraction
+  pipeline on a synthetic 8-taxon dataset.
+
+| `test/property_test.jl`
+| Property invariants: distance matrix symmetry always holds; bootstrap support
+  values are in [0, 1]; parsimony score is non-negative.
+
+| `benches/benchmarks.jl`
+| BenchmarkTools suite for distance matrix computation (varying sequence length
+  and taxon count), UPGMA, and 100-replicate bootstrap.
+
+| `ffi/`
+| Zig FFI directory — structural stub, no operative bindings yet.
+
+| `Project.toml`
+| Name `Cladistics`, v0.1.0, MPL-2.0; deps include `AcceleratorGate`,
+  `LinearAlgebra`, `Statistics`, `Clustering`, `Distances`, `DataFrames`,
+  `Graphs`.
+
+| `examples/`
+| Worked phylogenetic examples on synthetic DNA sequences, including
+  UPGMA vs NJ comparison and bootstrap support visualisation.
+
+| `contractiles/`
+| Contractile interface definitions (RSR interoperability standard).
+
+| `stapeln.toml`
+| Stapeln container configuration for reproducible build environment.
 |===
 
 == Questions?
