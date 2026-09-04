@@ -1,0 +1,113 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# ByteDetector.affine — Byte-level corruption and encoding detection patterns
+#
+# This file defines the canonical patterns for detecting byte-level issues
+# in source files, including C0 control characters, NUL corruption, and
+# invisible Unicode characters.
+#
+# Used by: CI/CD workflows (dogfood-gate.yml), linters, and validation tools.
+
+## BLOCKING PATTERNS (file corruption - fails gate)
+
+### C0 Control Characters
+# ISO C0 control range: 0x00-0x1F
+# EXCLUDES legitimate whitespace:
+#   - 0x09 (HT, horizontal tab)
+#   - 0x0A (LF, line feed)
+#   - 0x0D (CR, carriage return)
+#
+# Detection pattern (PCRE):
+#   \x00|[\x01-\x08\x0B\x0C\x0E-\x1F]
+#
+# Breakdown:
+#   \x00              - NUL byte (0x00) - file corruption
+#   \x01-\x08         - SOH, STX, ETX, EOT, ENQ, ACK, BEL, BS
+#   \x0B              - VT (vertical tab)
+#   \x0C              - FF (form feed)
+#   \x0E-\x1F         - SO, SI, DLE, DC1-4, NAK, SYN, ETB, CAN, EM, SUB, ESC, FS, GS, RS, US
+#
+# Rationale: These characters indicate file corruption or binary data in text files.
+# They are NEVER legitimate in source code and BLOCK the gate.
+
+pattern c0_control_blocking = "\x00|[\x01-\x08\x0B\x0C\x0E-\x1F]"
+
+## ADVISORY PATTERNS (invisible Unicode - warning only)
+
+### Invisible Unicode Characters
+# These are legitimate typography characters used in prose (especially
+# in AsciiDoc/Markdown documentation) but should be flagged for awareness.
+#
+# NBSP (Non-Breaking Space): \x{a0}
+# Soft Hyphen: \x{ad}
+# Zero-Width Spaces: \x{200b}-\x{200f}
+# Bidirectional formatting: \x{202a}-\x{202f}
+# Other zero-width: \x{2060}, \x{2066}-\x{2069}
+# BOM (Byte Order Mark): \x{feff}
+#
+# Detection pattern (PCRE with UTF-8 mode):
+#   (*UTF)[\x00-\x08\x0B\x0C\x0E-\x1F\x{a0}\x{ad}\x{200b}-\x{200f}\x{202a}-\x{202f}\x{2060}\x{2066}-\x{2069}\x{feff}]
+#
+# Note: The (*UTF) prefix enables UTF-8 mode in PCRE for proper Unicode matching.
+# This pattern includes BOTH blocking (C0) and advisory (Unicode) characters.
+
+pattern invisible_unicode_advisory = "(*UTF)[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x{a0}\\x{ad}\\x{200b}-\\x{200f}\\x{202a}-\\x{202f}\\x{2060}\\x{2066}-\\x{2069}\\x{feff}]"
+
+## LEADING BOM CHECK (separate check for file start)
+
+### Byte Order Mark (BOM) at file start
+# UTF-8 BOM:    EF BB BF
+# UTF-16 LE:    FF FE
+# UTF-16 BE:    FE FF
+# UTF-32 LE:    FF FE 00 00
+# UTF-32 BE:    00 00 FE FF
+#
+# Detection: Check first 3-4 bytes of file
+# Shell command: head -c 3 FILE | od -An -tx1 | grep -qE '^ *(ef bb bf|ff fe|fe ff|00 00 fe ff|ff fe 00 00)'
+#
+# Rationale: Source files should use UTF-8 without BOM. BOM causes issues
+# with parsers, compilers, and version control. Unix convention is no BOM.
+
+pattern leading_bom_hex = "ef bb bf|ff fe|fe ff|00 00 fe ff|ff fe 00 00"
+
+## ENFORCEMENT POLICY
+
+# BLOCKING (exit 1):
+#   - C0 control characters (\x00-\x1F excluding tab/LF/CR)
+#   - NUL bytes (\x00)
+#   Rationale: File corruption, not typography. About ~2,100 estate files
+#   carry legitimate invisible Unicode in prose, so only C0/NUL blocks.
+#
+# ADVISORY (warning only):
+#   - Invisible Unicode (NBSP, zero-width spaces, soft hyphens)
+#   - BOM anywhere in file (as part of invisible Unicode pattern)
+#   - Leading BOM (separate check, emits warning)
+#
+# Owner ruling: 2026-08-28 (Jonathan D.A. Jewell)
+
+## USAGE EXAMPLES
+
+# Grep for C0 control characters (blocking):
+#   grep -aPrl '\x00|[\x01-\x08\x0B\x0C\x0E-\x1F]' FILES
+#
+# Grep for all invisible characters (advisory):
+#   grep -aPrl '(*UTF)[\x00-\x08\x0B\x0C\x0E-\x1F\x{a0}\x{ad}\x{200b}-\x{200f}\x{202a}-\x{202f}\x{2060}\x{2066}-\x{2069}\x{feff}]' FILES
+#
+# Check for leading BOM:
+#   head -c 3 FILE | od -An -tx1 | grep -qE '^ *(ef bb bf|ff fe|fe ff)'
+
+## COMPATIBILITY
+
+# - PCRE (Perl-Compatible Regular Expressions): Used by grep -P
+# - Requires grep with -P flag (GNU grep, PCRE support)
+# - (*UTF) prefix for UTF-8 mode is PCRE-specific
+# - Locale-independent: Uses hex escapes, not character classes
+
+## REFERENCES
+
+# - ISO/IEC 6429:1992 (C0 control characters)
+# - Unicode Standard, Chapter 16 (Special Areas and Format Characters)
+# - RFC 3629 (UTF-8, Section 6: Byte Order Mark)
+# - POSIX.1-2017 (grep, regular expressions)
+# - Owner ruling: Repository issue/PR discussing enforcement policy
